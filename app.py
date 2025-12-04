@@ -529,23 +529,28 @@ Generate the questions now:"""
 
 
 if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("🚀 ExamBits AI Service Starting (Azure OpenAI + Validation)...")
-    print("="*60)
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host='0.0.0.0', port=port, debug=True)
 
-    if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
-        print("❌ ERROR: Azure OpenAI credentials not configured")
-        print("📝 Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env")
-        print("="*60)
-        exit(1)
-
-    print(f"✅ AI Service: Azure OpenAI")
-    print(f"✅ Endpoint: {AZURE_OPENAI_ENDPOINT}")
-    print(f"✅ Deployment: {AZURE_OPENAI_DEPLOYMENT}")
-    print(f"✅ API Version: {AZURE_API_VERSION}")
-    print(f"✅ Server: http://localhost:5000")
-    print(f"✅ PDF Validation: Enabled (pdfplumber)")
-    print(f"✅ Test Connection: http://localhost:5000/api/ai/test-connection")
-    print("="*60 + "\n")
-
-    app.run(host='0.0.0.0', port=5000, debug=True)
+#
+# if __name__ == "__main__":
+#     print("\n" + "="*60)
+#     print("🚀 ExamBits AI Service Starting (Azure OpenAI + Validation)...")
+#     print("="*60)
+#
+#     if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
+#         print("❌ ERROR: Azure OpenAI credentials not configured")
+#         print("📝 Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env")
+#         print("="*60)
+#         exit(1)
+#
+#     print(f"✅ AI Service: Azure OpenAI")
+#     print(f"✅ Endpoint: {AZURE_OPENAI_ENDPOINT}")
+#     print(f"✅ Deployment: {AZURE_OPENAI_DEPLOYMENT}")
+#     print(f"✅ API Version: {AZURE_API_VERSION}")
+#     print(f"✅ Server: http://localhost:5000")
+#     print(f"✅ PDF Validation: Enabled (pdfplumber)")
+#     print(f"✅ Test Connection: http://localhost:5000/api/ai/test-connection")
+#     print("="*60 + "\n")
+#
+#     app.run(host='0.0.0.0', port=5000, debug=True)
