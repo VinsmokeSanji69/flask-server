@@ -1,3 +1,4 @@
+import nltk_init
 import re
 import numpy as np
 import pdfplumber

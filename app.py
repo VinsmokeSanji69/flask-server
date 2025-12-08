@@ -1,37 +1,4 @@
-import nltk
-import os
-import sys
-# Initialize NLTK for Railway - ADD THIS
-def initialize_nltk():
-    """Download required NLTK data if not present - CRITICAL FOR RAILWAY"""
-    try:
-        print("🚀 Initializing NLTK for Railway deployment...")
-        nltk_data_path = '/tmp/nltk_data'
-        os.environ['NLTK_DATA'] = nltk_data_path
-
-        if not os.path.exists(nltk_data_path):
-            os.makedirs(nltk_data_path, exist_ok=True)
-
-        punkt_tab_path = os.path.join(nltk_data_path, 'tokenizers/punkt_tab')
-
-        if not os.path.exists(punkt_tab_path):
-            print("📥 Downloading NLTK data...")
-            nltk.download('punkt_tab', download_dir=nltk_data_path, quiet=False)
-            nltk.download('punkt', download_dir=nltk_data_path, quiet=False)
-            print("✅ NLTK data downloaded successfully")
-        else:
-            print("✅ NLTK data already exists")
-
-    except Exception as e:
-        print(f"❌ Error initializing NLTK: {e}")
-        try:
-            nltk.download('punkt_tab', quiet=True)
-            nltk.download('punkt', quiet=True)
-            print("✅ Fallback NLTK download successful")
-        except Exception as e2:
-            print(f"❌ Fallback also failed: {e2}")
-
-initialize_nltk()
+import nltk_init
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
