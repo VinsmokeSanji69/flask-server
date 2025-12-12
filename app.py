@@ -77,7 +77,8 @@ def call_azure_openai(messages, temperature=0.7, max_tokens=2000):
                     f"Error: {error_data.get('error', {}).get('message', response.text)}"
                 )
             else:
-                raise Exception(f"Azure OpenAI API error ({response.status_code}): {error_data.get('error', {}).get('message', response.text)}")
+                raise Exception(
+                    f"Azure OpenAI API error ({response.status_code}): {error_data.get('error', {}).get('message', response.text)}")
 
         data = response.json()
         return data['choices'][0]['message']['content']
@@ -142,7 +143,7 @@ def home():
     return jsonify({
         "message": "Flask API is working!",
         "service": "ExamBits AI Service",
-        "version": "3.1.0 (Azure OpenAI + PDF Validation)"
+        "version": "3.2.0 (Azure OpenAI + Topic Support + PDF Validation)"
     })
 
 
@@ -332,7 +333,13 @@ def analyze_topic():
 
 @app.route("/api/ai/generate-questions", methods=["POST"])
 def generate_questions():
-    """Generate exam questions from full PDF content"""
+    """
+    Generate exam questions from either:
+    1. Full PDF content (when 'content' is large and detailed)
+    2. Topic name (when 'content' is just a topic string)
+
+    The AI will adapt its approach based on the input type.
+    """
     try:
         data = request.json
 
@@ -343,11 +350,12 @@ def generate_questions():
         num_questions = int(data.get('num_questions', 10))
         difficulty = data.get('difficulty', 'medium')
         question_type = data.get('type', 'multiple-choice')
+
         # Validation
-        if not content or len(content.strip()) < 100:
+        if not content or len(content.strip()) < 3:
             return jsonify({
                 "success": False,
-                "error": "Content is too short to generate questions"
+                "error": "Content or topic is required"
             }), 400
 
         if num_questions < 1 or num_questions > 50:
@@ -356,12 +364,21 @@ def generate_questions():
                 "error": "Number of questions must be between 1 and 50"
             }), 400
 
-        # Truncate content if too long (keep first ~8000 chars to stay within token limits)
-        max_content_length = 8000
-        if len(content) > max_content_length:
-            content = content[:max_content_length] + "\n\n[Content truncated for processing...]"
+        # Determine if this is a topic-based or content-based generation
+        is_topic_based = len(content) < 200  # Short content = likely just a topic
 
-        print(f"Generating {num_questions} {question_type} questions from {len(content)} characters...")
+        if is_topic_based:
+            print(f"[Topic-Based] Generating {num_questions} {question_type} questions about topic: '{content}'")
+            generation_mode = "topic"
+        else:
+            print(
+                f"[Content-Based] Generating {num_questions} {question_type} questions from {len(content)} characters of content")
+            generation_mode = "content"
+
+            # Truncate content if too long (keep first ~8000 chars to stay within token limits)
+            max_content_length = 8000
+            if len(content) > max_content_length:
+                content = content[:max_content_length] + "\n\n[Content truncated for processing...]"
 
         # Build strict format requirements based on question type
         if question_type == 'multiple-choice':
@@ -383,8 +400,38 @@ def generate_questions():
 - correct_answer is a short text answer (1-5 words)
 - Example: {"question": "What is ___?", "options": [], "correct_answer": "Photosynthesis"}"""
 
-        # Create the prompt
-        prompt = f"""You are an expert exam question generator. Generate {num_questions} {difficulty} difficulty {question_type} questions based on the following educational content.
+        # Create different prompts based on generation mode
+        if is_topic_based:
+            # Topic-based generation: AI generates questions about the topic from its knowledge
+            prompt = f"""You are an expert exam question generator. Generate {num_questions} {difficulty} difficulty {question_type} questions about the following topic:
+
+TOPIC: {content}
+
+REQUIREMENTS:
+1. Generate EXACTLY {num_questions} questions about this topic
+2. Difficulty level: {difficulty}
+3. Question type: {question_type}
+4. Use your knowledge about this topic to create educational questions
+5. Questions should test understanding at the {difficulty} level
+6. All questions must be clear, accurate, and unambiguous
+7. For {difficulty} difficulty:
+   - easy: Basic facts and definitions
+   - medium: Application and understanding
+   - hard: Analysis, evaluation, and complex concepts
+
+{format_rules}
+
+CRITICAL: Return ONLY a valid JSON array. No markdown, no explanations, no additional text.
+Format: [
+  {{"question": "...", "options": [...], "correct_answer": "..."}},
+  ...
+]
+
+Generate the questions now:"""
+
+        else:
+            # Content-based generation: Questions must be based on provided content
+            prompt = f"""You are an expert exam question generator. Generate {num_questions} {difficulty} difficulty {question_type} questions based on the following educational content.
 
 CONTENT:
 {content}
@@ -396,6 +443,10 @@ REQUIREMENTS:
 4. Questions must be based ONLY on information in the content above
 5. Questions should test understanding, not just memorization
 6. All questions must be clear and unambiguous
+7. For {difficulty} difficulty:
+   - easy: Direct facts from content
+   - medium: Understanding and connections within content
+   - hard: Deep analysis and synthesis of content
 
 {format_rules}
 
@@ -410,7 +461,7 @@ Generate the questions now:"""
         messages = [
             {
                 "role": "system",
-                "content": f"You are an expert exam question generator. You create {question_type} questions based on educational content. You ONLY return valid JSON arrays with no additional formatting or text."
+                "content": f"You are an expert exam question generator. You create {question_type} questions {'about educational topics' if is_topic_based else 'based on educational content'}. You ONLY return valid JSON arrays with no additional formatting or text."
             },
             {
                 "role": "user",
@@ -458,7 +509,7 @@ Generate the questions now:"""
         validated_questions = []
         for i, q in enumerate(questions):
             if not isinstance(q, dict) or 'question' not in q or 'correct_answer' not in q:
-                print(f"Question {i+1} missing required fields, skipping")
+                print(f"Question {i + 1} missing required fields, skipping")
                 continue
 
             # Type-specific validation
@@ -493,7 +544,7 @@ Generate the questions now:"""
                         is_valid = True
 
             if not is_valid:
-                print(f"Question {i+1} failed validation for type {question_type}, skipping")
+                print(f"Question {i + 1} failed validation for type {question_type}, skipping")
                 continue
 
             # Add validated question
@@ -510,12 +561,13 @@ Generate the questions now:"""
                 "error": f"No valid {question_type} questions were generated. Please try again."
             }), 500
 
-        print(f"Successfully validated {len(validated_questions)} questions")
+        print(f"Successfully validated {len(validated_questions)} questions ({generation_mode} mode)")
 
         return jsonify({
             "success": True,
             "questions": validated_questions,
-            "count": len(validated_questions)
+            "count": len(validated_questions),
+            "generation_mode": generation_mode
         })
 
     except Exception as e:
@@ -530,28 +582,25 @@ Generate the questions now:"""
 
 
 if __name__ == "__main__":
-        port = int(os.environ.get("PORT", 5000))
-        app.run(host='0.0.0.0', port=port, debug=True)
+    print("\n" + "=" * 60)
+    print("🚀 ExamBits AI Service Starting...")
+    print("=" * 60)
 
-#
-# if __name__ == "__main__":
-#     print("\n" + "="*60)
-#     print("🚀 ExamBits AI Service Starting (Azure OpenAI + Validation)...")
-#     print("="*60)
-#
-#     if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
-#         print("❌ ERROR: Azure OpenAI credentials not configured")
-#         print("📝 Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env")
-#         print("="*60)
-#         exit(1)
-#
-#     print(f"✅ AI Service: Azure OpenAI")
-#     print(f"✅ Endpoint: {AZURE_OPENAI_ENDPOINT}")
-#     print(f"✅ Deployment: {AZURE_OPENAI_DEPLOYMENT}")
-#     print(f"✅ API Version: {AZURE_API_VERSION}")
-#     print(f"✅ Server: http://localhost:5000")
-#     print(f"✅ PDF Validation: Enabled (pdfplumber)")
-#     print(f"✅ Test Connection: http://localhost:5000/api/ai/test-connection")
-#     print("="*60 + "\n")
-#
-#     app.run(host='0.0.0.0', port=5000, debug=True)
+    if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
+        print("❌ ERROR: Azure OpenAI credentials not configured")
+        print("📝 Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env")
+        print("=" * 60)
+        exit(1)
+
+    print(f"✅ AI Service: Azure OpenAI")
+    print(f"✅ Endpoint: {AZURE_OPENAI_ENDPOINT}")
+    print(f"✅ Deployment: {AZURE_OPENAI_DEPLOYMENT}")
+    print(f"✅ API Version: {AZURE_API_VERSION}")
+    print(f"✅ Server: http://localhost:5000")
+    print(f"✅ PDF Validation: Enabled (only for PDF uploads)")
+    print(f"✅ Topic-Based Generation: Enabled")
+    print(f"✅ Test Connection: http://localhost:5000/api/ai/test-connection")
+    print("=" * 60 + "\n")
+
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
